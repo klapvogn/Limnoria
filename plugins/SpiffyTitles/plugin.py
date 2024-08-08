@@ -82,7 +82,6 @@ class SpiffyTitles(callbacks.Plugin):
         """
         self.add_youtube_handlers()
         self.add_imdb_handlers()
-        self.add_omg_handlers()
         self.add_imgur_handlers()
         self.add_coub_handlers()
         self.add_vimeo_handlers()
@@ -130,12 +129,6 @@ class SpiffyTitles(callbacks.Plugin):
         Enables meta info about IMDB links through the OMDB API
         """
         self.handlers["imdb.com"] = self.handler_imdb
-
-    def add_omg_handlers(self):
-        """
-        Enables meta info about IMDB links through the OMDB API
-        """
-        self.handlers["omgwtfnzbs.org"] = self.handler_omg
 
     def add_youtube_handlers(self):
         """
@@ -1382,182 +1375,6 @@ class SpiffyTitles(callbacks.Plugin):
         else:
             imdb_logo = "{0}\x0F".format(self.registryValue("imdb.logo", channel))
         return imdb_logo
-   
-    def handler_omg(self, url, info, channel):
-        """
-        Handles omgwtfnzbs.org links, querying the API for additional info.
-        Typical OMGWTFNZBs URL: https://omgwtfnzbs.org/details.php?id=B3y8Xo
-        """
-        if not self.registryValue("omgwtfnzbs.enabled", channel=channel):
-            log.debug(
-                "SpiffyTitles: OMGWTFNZBs handler disabled. Falling back to default handler."
-            )
-            return self.handler_default(url, channel)
-        
-        api_key = self.registryValue("omgwtfnzbs.omgAPI")
-        user_key = self.registryValue("omgwtfnzbs.userKey")
-        nzbid = None
-
-        # Extract ID from URL, supporting both formats
-        match = re.match(r"https://omgwtfnzbs\.org/details(?:\.php)?\?id=([a-zA-Z0-9]+)", url)
-        if match:
-            nzbid = match.group(1)
-        if not nzbid:
-            log.error("SpiffyTitles: Invalid OMGWTFNZBs URL: %s" % url)
-            return self.handler_default(url, channel)
-        
-        omg_url = "https://api.omgwtfnzbs.org/json/"
-        options = {"api": api_key, "user": user_key, "id": nzbid}
-        
-        try:
-            request = requests.get(
-                omg_url, params=options, timeout=self.timeout, proxies=self.proxies
-            )
-            request.raise_for_status()
-            response = json.loads(request.content.decode())
-            log.debug(f"SpiffyTitles: Received response: {response}")
-
-            if isinstance(response, list) and response:
-                response = response[0]  # Assuming the first item in the list is the relevant one
-                log.debug(f"SpiffyTitles: Extracted response from list: {response}")
-            elif isinstance(response, dict):
-                # Ensure response is a dictionary
-                log.debug("SpiffyTitles: Response is a valid dictionary")
-            else:
-                log.error("SpiffyTitles: Unexpected response format from OMGWTFNZBs API")
-                response = None
-            if response and "Error" in response:
-                log.error("SpiffyTitles: Error in API response: %s" % response["Error"])
-                response = None
-        except (requests.exceptions.RequestException, requests.exceptions.HTTPError) as e:
-            log.error("SpiffyTitles OMGWTFNZBs Error: %s" % (str(e)))
-            response = None
-        except json.JSONDecodeError:
-            log.error(
-                "SpiffyTitles: JSON error opening OMGWTFNZBs response: %s"
-                % (request.content.decode())
-            )
-            response = None
-
-        if not response:
-            return self.handler_default(url, channel)
-
-        category_mapping = {
-            "apps.pc": "\x0307Apps: PC\x03",
-            "apps.mac": "\x0307Apps: MAC\x03",
-            "apps.phone": "\x0307Apps: Phone\x03",
-            "apps.other": "\x0307Apps: Other\x03",
-          
-            "music.mp3": "\x0306Music: MP3\x03",
-            "music.video": "\x0306Music: MViD\x03",
-            "music.flac": "\x0306Music: FLAC\x03",
-            "music.other": "\x0306Music: Other\x03",
-           
-            "other.audiobook": "\x0304Other: Audiobook\x03",
-            "games.pc": "\x0302Games: PC\x03",
-            "games.mac": "\x0302Games: MAC\x03",
-            "games.other": "\x0302Games: Other\x03",
-            
-            "movies.sd": "\x0308Movies: SD\x03",
-            "movies.hd": "\x0308Movies: HD\x03",
-            "movies.uhd": "\x0308Movies: UHD\x03",
-            "movies.full.br": "\x0308Movies: Full BR\x03",
-            "movies.dvd": "\x0308Movies: DVD\x03",
-            "movies.other": "\x0310Movies: Other\x03",
-            
-            "tv.sd": "\x0310TV: SD\x03",
-            "tv.hd": "\x0310TV: HD\x03",
-            "tv.uhd": "\x0310TV: UHD\x03",
-            "tv.other": "\x0310TV: Other\x03",
-
-            "xxx.sd.clips": "\x0313XXX: SD-CLiPS\x03",
-            "xxx.hd.clips": "\x0313XXX: HD-CLiPS\x03",
-            "xxx.uhd.clips": "\x0313XXX: UHD-CLiPS\x03",
-            "xxx.movies.sd": "\x0313XXX: MOViES-SD\x03",
-            "xxx.movies.hd": "\x0313XXX: MOViES-HD\x03",
-            "xxx.movies.uhd": "\x0313XXX: MOViES-UHD\x03",
-            "xxx.imagesets": "\x0313XXX: IMAGESETS\x03",
-            "xxx.trans": "\x0313XXX: Trans\x03",
-            "xxx.gay": "\x0313XXX: Gay\x03",
-            "xxx.vr": "\x0313XXX: VR\x03",
-            "xxx.camrips": "\x0313XXX: CamRips\x03",
-            "xxx.dvd": "\x0313XXX: DVD\x03",
-            "xxx.pack-other": "\x0313XXX Packs/Other\x03",
-            
-            "other.ebook": "\x0303Other: E-Books\x03",
-            "other.other": "\x0303Other: Other\x03",
-        }
-
-        # Extract `cattext` from the response, if available
-        cattext = response.get("cattext", "N/A")
-        # Map the `cattext` to a more user-friendly format
-        cattext = category_mapping.get(cattext, cattext)
-
-        # Convert sizebytes to appropriate size string
-        sizebytes = response.get("sizebytes", "N/A")
-        if sizebytes != "N/A":
-            try:
-                sizebytes = float(sizebytes)
-                if sizebytes >= 1024 ** 3:
-                    size_str = f"{sizebytes / (1024 ** 3):.2f} GB"
-                else:
-                    size_str = f"{sizebytes / (1024 ** 2):.2f} MB"
-            except ValueError:
-                size_str = "N/A"
-        else:
-            size_str = "N/A"
-
-        # Convert usenetage to a human-readable format
-        usenetage = response.get("usenetage", "N/A")
-        if usenetage != "N/A":
-            try:
-                current_time = datetime.datetime.utcnow()
-                usenetage_time = datetime.datetime.utcfromtimestamp(int(usenetage))
-                difference = current_time - usenetage_time
-                seconds = difference.total_seconds()
-                
-                if seconds < 3600:
-                    minutes = seconds // 60
-                    formatted_time = f"{int(minutes)} minutes ago"
-                elif seconds < 86400:
-                    hours = seconds // 3600
-                    formatted_time = f"{int(hours)} hours ago"
-                else:
-                    days = seconds // 86400
-                    formatted_time = f"{int(days)} days ago"
-            except (ValueError, OverflowError):
-                formatted_time = "N/A"
-        else:
-            formatted_time = "N/A"
-
-        # Prepare template variables (adjust according to the actual data structure)
-        release = response.get("release", "N/A")
-        log.debug(f"SpiffyTitles: Extracted release: {release}")
-
-        template_vars = {
-            "release": release,
-            "cattext": cattext,
-            "sizebytes": size_str,
-            "usenetage": formatted_time,
-            "omg_logo": self.get_omgwtfnzbs_logo(channel),
-        }
-
-        # Log the template variables for debugging
-        log.debug(f"SpiffyTitles: Template variables: {template_vars}")
-
-        # Assuming the response is a dictionary with the release details
-        omgwtfnzbs_template = Template(self.registryValue("omgwtfnzbs.template"))   
-                                    
-        result = omgwtfnzbs_template.render(template_vars)
-        if result:
-            return result
-        else:
-            log.debug("SpiffyTitles: OMGWTFNZBs handler failed. calling default handler")
-            return self.handler_default(url, channel)
-
-    def get_omgwtfnzbs_logo(self, channel):
-        omg_logo = "{0}\x0F".format(self.registryValue("omgwtfnzbs.logo", channel))
-        return omg_logo
 
     def handler_wikipedia(self, url, domain, channel):
         """
