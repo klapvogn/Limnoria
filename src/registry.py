@@ -148,7 +148,12 @@ def close(registry, filename, private=True):
                 if value._showDefault:
                     lines.append('#\n')
                     try:
-                        x = value.__class__(value._default, value._help)
+                        # We set setDefault to False and manually call
+                        # Value._setValue, just in case the class inherits
+                        # Value.setValue to set some global state (#1349)
+                        x = value.__class__(value._default, value._help,
+                            setDefault=False)
+                        x.value = value._default
                     except Exception as e:
                         exception('Exception instantiating default for %s:' %
                                   value._name)
@@ -737,7 +742,10 @@ class NormalizedString(String):
     def serialize(self):
         s = self.__parent.serialize()
         prefixLen = len(self._name) + 2
-        lines = textwrap.wrap(s, width=76-prefixLen)
+        # break_long_words=False so we don't split in the middle of a
+        # unicode_escape sequence when there are multiple escape sequences in a
+        # row.
+        lines = textwrap.wrap(s, width=76-prefixLen, break_long_words=False)
         last = len(lines)-1
         for (i, line) in enumerate(lines):
             if i != 0:
